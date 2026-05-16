@@ -1,0 +1,15 @@
+{
+  "name": "sora-academic-screening-demo",
+  "private": true,
+  "version": "1.0.0",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "build": "npm run build -w sora-sdk && npm run build -w @sora/api && npm run build -w @sora/web",
+    "dev:api": "npm run dev -w @sora/api",
+    "dev:web": "npm run dev -w @sora/web",
+    "test": "npm run test -w sora-sdk && npm run test -w @sora/api && npm run test -w @sora/web"
+  }
+}

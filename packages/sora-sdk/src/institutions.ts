@@ -1,0 +1,152 @@
+import type { InstitutionContextRecord } from "./types";
+
+const DATASET_CSV = `University,Country,GDI,SI,GDS,ARF,TrueScore
+University of Oxford,UK,0.98,0.99,0.2,1.0,100
+University of Cambridge,UK,0.97,0.98,0.22,1.0,99
+Imperial College London,UK,0.96,0.97,0.25,1.0,98
+UCL,UK,0.95,0.96,0.27,1.0,97
+University of Edinburgh,UK,0.94,0.95,0.28,1.0,96
+University of Manchester,UK,0.93,0.94,0.3,1.0,95
+King's College London,UK,0.93,0.94,0.29,1.0,95
+University of Toronto,Canada,0.96,0.97,0.23,1.0,98
+University of British Columbia,Canada,0.95,0.96,0.25,1.0,97
+McGill University,Canada,0.95,0.95,0.26,1.0,96
+University of Waterloo,Canada,0.94,0.95,0.27,1.0,95
+University of Melbourne,Australia,0.95,0.96,0.24,1.0,97
+University of Sydney,Australia,0.94,0.95,0.26,1.0,96
+Monash University,Australia,0.93,0.94,0.28,1.0,95
+Australian National University,Australia,0.94,0.95,0.25,1.0,96
+University of Queensland,Australia,0.93,0.94,0.27,1.0,95
+UNSW Sydney,Australia,0.94,0.95,0.26,1.0,96
+ETH Zurich,Switzerland,0.97,0.98,0.21,1.0,99
+EPFL,Switzerland,0.96,0.97,0.23,1.0,98
+National University of Singapore,Singapore,0.96,0.97,0.22,1.0,98
+Nanyang Technological University,Singapore,0.95,0.96,0.24,1.0,97
+University of Tokyo,Japan,0.96,0.97,0.23,1.0,98
+Seoul National University,Korea,0.95,0.96,0.25,1.0,97
+KAIST,Korea,0.95,0.96,0.24,1.0,97
+University of Hong Kong,Hong Kong,0.95,0.96,0.24,1.0,97
+Chinese University of Hong Kong,Hong Kong,0.94,0.95,0.26,1.0,96
+Peking University,China,0.95,0.96,0.25,1.0,97
+Tsinghua University,China,0.96,0.97,0.23,1.0,98
+Harvard University,USA,0.99,0.99,0.18,1.0,100
+MIT,USA,0.99,0.99,0.18,1.0,100
+Stanford University,USA,0.98,0.99,0.19,1.0,100
+UC Berkeley,USA,0.97,0.98,0.21,1.0,99
+UCLA,USA,0.96,0.97,0.23,1.0,98
+University of Michigan,USA,0.95,0.96,0.25,1.0,97
+University of Washington,USA,0.95,0.96,0.24,1.0,97
+Purdue University,USA,0.94,0.95,0.26,1.0,96
+NYU,USA,0.94,0.95,0.27,1.0,96
+Columbia University,USA,0.98,0.98,0.2,1.0,99
+University of Delhi,India,0.9,0.92,0.35,0.9,90
+Jawaharlal Nehru University,India,0.91,0.93,0.33,0.92,92
+University of Mumbai,India,0.8,0.75,0.5,0.85,78
+Manipal Academy of Higher Education,India,0.85,0.82,0.42,0.85,84
+VIT University,India,0.84,0.8,0.45,0.82,82
+SRM Institute,India,0.83,0.78,0.48,0.8,80
+Amity University,India,0.78,0.72,0.52,0.78,75
+Lovely Professional University,India,0.75,0.7,0.55,0.75,72
+IIT Delhi,India,0.95,0.97,0.25,0.95,97
+IIT Bombay,India,0.96,0.98,0.22,0.95,98
+IIT Madras,India,0.96,0.98,0.22,0.95,98
+IIT Kharagpur,India,0.95,0.97,0.24,0.95,97
+BITS Pilani,India,0.93,0.95,0.28,0.9,94
+Anna University,India,0.88,0.86,0.4,0.85,88
+Christ University,India,0.86,0.84,0.42,0.85,86
+Kathmandu University,Nepal,0.86,0.85,0.4,0.85,86
+Tribhuvan University,Nepal,0.8,0.78,0.45,0.8,80
+BPKIHS,Nepal,0.88,0.87,0.38,0.88,88
+Chulalongkorn University,Thailand,0.95,0.96,0.25,0.95,96
+Mahidol University,Thailand,0.94,0.95,0.26,0.94,95
+KMUTT,Thailand,0.9,0.91,0.32,0.9,91
+Assumption University,Thailand,0.82,0.8,0.45,0.82,80`;
+
+export function normalizeInstitutionKey(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+function parseDataset(): InstitutionContextRecord[] {
+  return DATASET_CSV
+    .trim()
+    .split("\n")
+    .slice(1)
+    .map((line) => {
+      const [institutionName, country, gdi, si, gds, arf, trueScore] = line.split(",");
+      return {
+        institutionName,
+        country,
+        gdi: Number(gdi),
+        si: Number(si),
+        gds: Number(gds),
+        arf: Number(arf),
+        trueScore: Number(trueScore),
+      };
+    });
+}
+
+export const INSTITUTION_DATASET = parseDataset();
+
+export const INSTITUTION_BASELINE = {
+  gdi: average(INSTITUTION_DATASET.map((record) => record.gdi)),
+  si: average(INSTITUTION_DATASET.map((record) => record.si)),
+  gds: average(INSTITUTION_DATASET.map((record) => record.gds)),
+  arf: average(INSTITUTION_DATASET.map((record) => record.arf)),
+};
+
+function average(values: number[]): number {
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+export function findInstitutionRecord(
+  institutionName: string,
+  country?: string,
+): InstitutionContextRecord | undefined {
+  const normalizedName = normalizeInstitutionKey(institutionName);
+  const normalizedCountry = country ? normalizeInstitutionKey(country) : undefined;
+
+  const exact = INSTITUTION_DATASET.find((record) => {
+    if (normalizeInstitutionKey(record.institutionName) !== normalizedName) {
+      return false;
+    }
+
+    if (!normalizedCountry) {
+      return true;
+    }
+
+    return normalizeInstitutionKey(record.country) === normalizedCountry;
+  });
+
+  if (exact) {
+    return exact;
+  }
+
+  return INSTITUTION_DATASET.find(
+    (record) => normalizeInstitutionKey(record.institutionName) === normalizedName,
+  );
+}
+
+export function listInstitutionNames(): string[] {
+  return INSTITUTION_DATASET.map((record) => record.institutionName).sort((left, right) =>
+    left.localeCompare(right),
+  );
+}
+
+export function listCountries(): string[] {
+  return [...new Set(INSTITUTION_DATASET.map((record) => record.country))].sort((left, right) =>
+    left.localeCompare(right),
+  );
+}
+
+export function listInstitutionsByCountry(country?: string): string[] {
+  const normalizedCountry = country ? normalizeInstitutionKey(country) : "";
+  const records = normalizedCountry
+    ? INSTITUTION_DATASET.filter(
+        (record) => normalizeInstitutionKey(record.country) === normalizedCountry,
+      )
+    : INSTITUTION_DATASET;
+
+  return records
+    .map((record) => record.institutionName)
+    .sort((left, right) => left.localeCompare(right));
+}

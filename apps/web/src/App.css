@@ -1,0 +1,163 @@
+:root {
+  color: #13263a;
+  background:
+    radial-gradient(circle at top left, rgba(199, 169, 91, 0.2), transparent 28%),
+    linear-gradient(160deg, #f3eadb 0%, #f9f6ef 52%, #dce7ef 100%);
+  font-family: "Segoe UI", "Trebuchet MS", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+}
+
+.shell {
+  width: min(1120px, calc(100% - 2rem));
+  margin: 0 auto;
+  padding: 2rem 0 4rem;
+}
+
+.hero,
+.panel {
+  background: rgba(255, 255, 255, 0.82);
+  border: 1px solid rgba(19, 38, 58, 0.08);
+  border-radius: 24px;
+  box-shadow: 0 16px 40px rgba(19, 38, 58, 0.08);
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+  backdrop-filter: blur(8px);
+}
+
+.hero h1,
+.panel h2,
+.card h3 {
+  margin-top: 0;
+}
+
+.eyebrow,
+.section-tag {
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  font-size: 0.78rem;
+  color: #8f5f1f;
+}
+
+.mode-switch,
+.button-grid,
+.result-grid,
+.card-stack,
+.subject-row {
+  display: grid;
+  gap: 1rem;
+}
+
+.mode-switch {
+  grid-template-columns: repeat(2, minmax(0, 180px));
+}
+
+.button-grid {
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.result-grid {
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  margin-top: 1.25rem;
+}
+
+.card-stack {
+  margin-bottom: 1rem;
+}
+
+.card,
+.report-card {
+  background: #fffdfa;
+  border-radius: 18px;
+  border: 1px solid rgba(143, 95, 31, 0.14);
+  padding: 1rem;
+}
+
+.report-card {
+  border-color: rgba(19, 38, 58, 0.16);
+}
+
+button,
+select,
+input {
+  font: inherit;
+}
+
+button,
+select {
+  border-radius: 999px;
+  border: 1px solid rgba(19, 38, 58, 0.16);
+  padding: 0.82rem 1rem;
+  background: white;
+  color: #13263a;
+}
+
+button.selected,
+.primary-action {
+  background: #17324d;
+  color: #f7f0e5;
+}
+
+button:disabled {
+  opacity: 0.6;
+}
+
+label {
+  display: grid;
+  gap: 0.4rem;
+}
+
+input,
+textarea {
+  border-radius: 12px;
+  border: 1px solid rgba(19, 38, 58, 0.16);
+  padding: 0.7rem 0.9rem;
+  background: white;
+}
+
+.subject-row {
+  grid-template-columns: 1.8fr 1fr 1fr;
+}
+
+.error-banner {
+  margin: 0 0 1.5rem;
+  padding: 0.9rem 1rem;
+  border-radius: 16px;
+  background: #fff2f0;
+  color: #9d2d22;
+}
+
+.muted {
+  color: #617286;
+}
+
+pre {
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 0;
+}
+
+a {
+  color: #17324d;
+}
+
+@media (max-width: 720px) {
+  .shell {
+    width: min(100% - 1rem, 100%);
+  }
+
+  .subject-row {
+    grid-template-columns: 1fr;
+  }
+
+  .mode-switch {
+    grid-template-columns: 1fr;
+  }
+}
