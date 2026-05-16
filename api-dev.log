@@ -1,0 +1,6 @@
+
+> @sora/api@1.0.0 dev
+> tsx watch src/server.ts
+
+◇ injected env (10) from ..\..\.env // tip: ⌘ suppress logs { quiet: true }
+Sora API listening on http://localhost:3030 in ndi mode using nats transport
