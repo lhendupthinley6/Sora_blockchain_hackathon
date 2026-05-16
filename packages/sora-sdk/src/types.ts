@@ -14,7 +14,8 @@ export type VerificationStatus =
   | "completed"
   | "failed"
   | "issued"
-  | "accepted";
+  | "accepted"
+  | "revoked";
 
 export interface StudentIdCredential {
   schema: "studentId";

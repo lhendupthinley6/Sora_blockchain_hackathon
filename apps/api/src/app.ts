@@ -215,11 +215,27 @@ function applyTransportEvent(
     flow.scope,
     transport,
   );
-  flow.normalizedResult = normalized;
-  flow.status = normalized.verified ? "completed" : "failed";
-  flow.error = normalized.verified ? undefined : "Credential proof was not validated.";
+  const localStatus = applyLocalRevocationStatus(store, normalized);
+  flow.normalizedResult = localStatus.normalized;
+  flow.status = localStatus.normalized.verified ? "completed" : "failed";
+  flow.error = localStatus.revoked
+    ? "Credential has been revoked by the issuer."
+    : localStatus.normalized.verified
+      ? undefined
+      : "Credential proof was not validated.";
   store.set(threadId, flow);
   return { ok: true as const, deduped: false };
+}
+
+function encodeSharePayload(value: unknown): string {
+  return Buffer.from(JSON.stringify(value), "utf8").toString("base64url");
+}
+
+function decodeSharePayload(value: string): { threadId?: string } {
+  const raw = value.startsWith("sora-share://credential?payload=")
+    ? new URL(value).searchParams.get("payload") ?? ""
+    : value;
+  return JSON.parse(Buffer.from(raw, "base64url").toString("utf8")) as { threadId?: string };
 }
 
 function matchesRevokedCredential(
@@ -548,6 +564,8 @@ export function createApp(
             scope: issueRequest.schema,
           },
           issueResult: result,
+          issuedCredentialData: issueRequest.credentialData,
+          revoked: false,
         });
         res.status(201).json(result);
         return;
@@ -582,6 +600,8 @@ export function createApp(
           qrSvg,
           acceptanceStatus: "issued",
         },
+        issuedCredentialData: issueRequest.credentialData,
+        revoked: false,
       });
       res.status(201).json({
         ...result,
@@ -613,15 +633,127 @@ export function createApp(
       .map((flow) => ({
         threadId: flow.issueResult!.issueCredThreadId,
         scope: flow.scope,
-        status: flow.status,
+        status: flow.revoked ? "revoked" : flow.status,
         transport: flow.transport,
         deepLinkURL: flow.issueResult!.deepLinkURL,
         credInviteURL: flow.issueResult!.credInviteURL,
         relationshipDid: flow.issueResult!.relationshipDid ?? null,
         revocationId: flow.issueResult!.revocationId ?? null,
-        acceptanceStatus: flow.issueResult!.acceptanceStatus ?? flow.status,
+        acceptanceStatus: flow.revoked ? "revoked" : flow.issueResult!.acceptanceStatus ?? flow.status,
+        revoked: Boolean(flow.revoked),
+        revokedAt: flow.revokedAt,
+        credentialData: flow.issuedCredentialData,
       }));
     res.json({ items: history });
+  });
+
+  app.post("/api/issuance/revoke", (req, res) => {
+    const threadId = String(req.body?.threadId ?? "");
+    if (!threadId) {
+      res.status(400).json({ error: "threadId is required." });
+      return;
+    }
+
+    const flow = store.get(threadId);
+    if (!flow || flow.flowType !== "issuance" || !flow.issueResult) {
+      res.status(404).json({ error: "Issued credential was not found." });
+      return;
+    }
+
+    flow.revoked = true;
+    flow.revokedAt = new Date().toISOString();
+    flow.status = "revoked";
+    flow.error = "Credential has been revoked by the issuer.";
+    store.set(threadId, flow);
+
+    res.json({
+      ok: true,
+      threadId,
+      status: flow.status,
+      revoked: true,
+      revokedAt: flow.revokedAt,
+    });
+  });
+
+  app.post("/api/share/create", async (req, res) => {
+    try {
+      const threadId = String(req.body?.threadId ?? "");
+      const holderDid = String(req.body?.holderDid ?? "");
+      if (!threadId) {
+        res.status(400).json({ error: "threadId is required." });
+        return;
+      }
+
+      const flow = store.get(threadId);
+      if (!flow || flow.flowType !== "issuance" || !flow.issueResult || !flow.issuedCredentialData) {
+        res.status(404).json({ error: "Issued credential was not found." });
+        return;
+      }
+      if (flow.revoked) {
+        res.status(409).json({ error: "Revoked credentials cannot be shared." });
+        return;
+      }
+      if (flow.issueResult.acceptanceStatus !== "accepted") {
+        res.status(409).json({ error: "Credential must be accepted by the student before it can be shared." });
+        return;
+      }
+
+      const payload = {
+        version: 1,
+        threadId,
+        schema: flow.scope,
+        holderDid,
+        credentialData: flow.issuedCredentialData,
+        issuedAt: new Date().toISOString(),
+      };
+      const encoded = encodeSharePayload(payload);
+      const qrContent = `sora-share://credential?payload=${encoded}`;
+      const qrSvg = await QRCode.toString(qrContent, { type: "svg", margin: 0 });
+      res.status(201).json({ qrContent, qrSvg, payload, status: "active", verified: true });
+    } catch (error) {
+      res.status(400).json({ error: error instanceof Error ? error.message : "Unable to create share QR." });
+    }
+  });
+
+  app.post("/api/share/verify", (req, res) => {
+    try {
+      const payload = String(req.body?.payload ?? req.body?.qrContent ?? "");
+      if (!payload) {
+        res.status(400).json({ error: "payload is required." });
+        return;
+      }
+
+      const decoded = decodeSharePayload(payload);
+      const flow = decoded.threadId ? store.get(decoded.threadId) : undefined;
+      if (!flow || flow.flowType !== "issuance" || !flow.issueResult) {
+        res.status(404).json({ verified: false, status: "invalid", error: "Credential share was not found." });
+        return;
+      }
+
+      if (flow.revoked) {
+        res.json({
+          verified: false,
+          status: "revoked",
+          revoked: true,
+          revokedAt: flow.revokedAt,
+          threadId: decoded.threadId,
+          credentialData: flow.issuedCredentialData,
+          error: "Credential has been revoked by the issuer.",
+        });
+        return;
+      }
+
+      res.json({
+        verified: true,
+        status: "verified",
+        revoked: false,
+        threadId: decoded.threadId,
+        schema: flow.scope,
+        credentialData: flow.issuedCredentialData,
+      });
+    } catch (error) {
+      res.status(400).json({ verified: false, status: "invalid", error: error instanceof Error ? error.message : "Unable to verify share." });
+    }
   });
 
   return { app, store };

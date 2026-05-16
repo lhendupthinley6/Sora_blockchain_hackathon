@@ -48,7 +48,7 @@ const DEFAULT_SORA_MODE: SoraMode = import.meta.env.VITE_SORA_MODE === "mock" ? 
 
 interface VerificationStatusResponse {
   threadId: string;
-  status: "pending" | "completed" | "failed" | "issued" | "accepted";
+  status: "pending" | "completed" | "failed" | "issued" | "accepted" | "revoked";
   start?: VerificationStartResult;
   normalizedResult?: NormalizedProofResult;
   report?: ScreeningReport;
@@ -60,13 +60,40 @@ interface VerificationStatusResponse {
 interface IssuanceHistoryItem {
   threadId: string;
   scope: SupportedCredentialSchema;
-  status: "pending" | "completed" | "failed" | "issued" | "accepted";
+  status: "pending" | "completed" | "failed" | "issued" | "accepted" | "revoked";
   transport: "mock" | "webhook" | "nats";
   deepLinkURL: string;
   credInviteURL: string;
   relationshipDid?: string | null;
   revocationId?: string | null;
   acceptanceStatus?: string;
+  revoked?: boolean;
+  revokedAt?: string;
+  credentialData?: Record<string, string | number>;
+}
+
+interface CredentialShareResponse {
+  qrContent: string;
+  qrSvg: string;
+  status: string;
+  verified: boolean;
+  payload?: {
+    threadId: string;
+    schema: SupportedCredentialSchema;
+    credentialData: Record<string, string | number>;
+  };
+  error?: string;
+}
+
+interface ShareVerificationResponse {
+  verified: boolean;
+  status: "verified" | "revoked" | "invalid";
+  revoked?: boolean;
+  revokedAt?: string;
+  threadId?: string;
+  schema?: SupportedCredentialSchema;
+  credentialData?: Record<string, string | number>;
+  error?: string;
 }
 
 const verificationActions: Array<{ label: string; scope: VerificationScope }> = [
@@ -1220,15 +1247,20 @@ function ConnectedVerifierPage({
 function ConnectedVerifyPage({
   activeStart,
   verificationStatus,
+  shareVerification,
   busy,
   onStartVerification,
+  onVerifyShare,
 }: {
   activeStart: VerificationStartResult | null;
   verificationStatus: VerificationStatusResponse | null;
+  shareVerification: ShareVerificationResponse | null;
   busy: string | null;
   onStartVerification: (scope: VerificationScope) => Promise<void>;
+  onVerifyShare: (payload: string) => Promise<void>;
 }) {
   const verifiedResult = verificationStatus?.normalizedResult;
+  const [sharePayload, setSharePayload] = useState("");
 
   return (
     <StandardPage eyebrow="Credential check" title="Verify Student ID and academic credential proofs." description="This page is connected to the real verification API. Start a proof request, display the wallet QR, and poll for the normalized result." icon={SearchCheck}>
@@ -1258,6 +1290,25 @@ function ConnectedVerifyPage({
               <a href={activeStart.deepLinkURL} className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-white/10 px-4 py-3 text-sm font-bold text-white transition hover:bg-white/15">
                 Open Wallet Deep Link <ArrowRight className="h-4 w-4" />
               </a>
+            </div>
+          ) : null}
+        </GlassCard>
+        <GlassCard>
+          <h3 className="text-2xl font-black">Verify Shared QR Payload</h3>
+          <p className="mt-2 text-sm leading-6 text-slate-300">Paste the Sora share QR content from a student. The backend checks the local issuer revocation registry before returning verified.</p>
+          <textarea value={sharePayload} onChange={(event) => setSharePayload(event.target.value)} placeholder="sora-share://credential?payload=..." className="mt-5 min-h-[140px] w-full rounded-2xl border border-white/10 bg-slate-950/60 p-4 text-sm text-white outline-none placeholder:text-slate-500" />
+          <button onClick={() => void onVerifyShare(sharePayload)} className="mt-4 w-full rounded-2xl bg-amber-300 px-5 py-3 font-black text-slate-950 transition hover:bg-amber-200">Verify Shared Credential</button>
+          {shareVerification ? (
+            <div className={cn("mt-5 rounded-3xl border p-5", shareVerification.verified ? "border-emerald-300/20 bg-emerald-300/10" : "border-red-300/20 bg-red-400/10")}>
+              <div className="flex items-center gap-3">
+                {shareVerification.verified ? <BadgeCheck className="h-7 w-7 text-emerald-300" /> : <XCircle className="h-7 w-7 text-red-300" />}
+                <div>
+                  <Pill tone={shareVerification.verified ? "green" : "red"}>{shareVerification.status}</Pill>
+                  <p className={cn("mt-2 text-sm font-black", shareVerification.verified ? "text-emerald-50" : "text-red-100")}>{shareVerification.verified ? "Verified Credential" : shareVerification.status === "revoked" ? "Revoked Credential" : "Invalid Credential"}</p>
+                </div>
+              </div>
+              <p className="mt-3 text-sm leading-6 text-slate-200">{shareVerification.verified ? "Credential is active and verified by the local registry." : shareVerification.error ?? "Credential is not verified."}</p>
+              <pre className="mt-4 overflow-x-auto rounded-2xl bg-black/30 p-4 text-xs text-slate-200">{JSON.stringify(shareVerification.credentialData ?? shareVerification, null, 2)}</pre>
             </div>
           ) : null}
         </GlassCard>
@@ -1375,8 +1426,11 @@ function ConnectedIssuerPage({
   academicCertificateIssueResult,
   academicCertificateIssueStatus,
   issuanceHistory,
+  shareResult,
   busy,
   onIssue,
+  onRevoke,
+  onCreateShare,
 }: {
   holderDid: string;
   studentIdDraft: Record<string, string | number>;
@@ -1396,8 +1450,11 @@ function ConnectedIssuerPage({
   academicCertificateIssueResult: IssueCredentialResult | null;
   academicCertificateIssueStatus: VerificationStatusResponse | null;
   issuanceHistory: IssuanceHistoryItem[];
+  shareResult: CredentialShareResponse | null;
   busy: string | null;
   onIssue: (schema: SupportedCredentialSchema) => Promise<void>;
+  onRevoke: (threadId: string) => Promise<void>;
+  onCreateShare: (threadId: string) => Promise<void>;
 }) {
   const academicGradeMax = academicGradeScaleMax(academicCertificateGradeScale);
   const countryOptions = listCountries();
@@ -1485,12 +1542,16 @@ function ConnectedIssuerPage({
           <div className="mt-5 space-y-3">
             {issuanceHistory.map((item) => (
               <div key={item.threadId} className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                <div className="flex items-center justify-between gap-3">
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                   <div>
                     <p className="font-bold text-white">{item.scope}</p>
                     <p className="mt-1 text-xs text-slate-400">{item.threadId}</p>
                   </div>
-                  <Pill tone={item.acceptanceStatus === "accepted" || item.status === "accepted" ? "green" : "amber"}>{item.acceptanceStatus ?? item.status}</Pill>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Pill tone={item.revoked || item.status === "revoked" ? "red" : item.acceptanceStatus === "accepted" || item.status === "accepted" ? "green" : "amber"}>{item.revoked ? "revoked" : item.acceptanceStatus ?? item.status}</Pill>
+                    <button disabled={item.revoked || item.acceptanceStatus !== "accepted"} onClick={() => void onCreateShare(item.threadId)} className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-white/10 px-3 py-2 text-xs font-black text-white transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-50"><Share2 className="h-4 w-4 text-amber-200" />Share</button>
+                    <button disabled={item.revoked} onClick={() => void onRevoke(item.threadId)} className="inline-flex items-center gap-2 rounded-2xl bg-red-400 px-3 py-2 text-xs font-black text-white transition disabled:cursor-not-allowed disabled:opacity-50"><Ban className="h-4 w-4" />Revoke</button>
+                  </div>
                 </div>
               </div>
             ))}
@@ -1498,6 +1559,16 @@ function ConnectedIssuerPage({
         ) : (
           <p className="mt-4 text-sm text-slate-300">No issuance history yet.</p>
         )}
+        {shareResult ? (
+          <div className="mt-6 grid gap-4 rounded-3xl border border-emerald-300/20 bg-emerald-300/10 p-4 lg:grid-cols-[0.75fr_1.25fr]">
+            <div className="rounded-3xl bg-white p-5 text-slate-950" dangerouslySetInnerHTML={{ __html: shareResult.qrSvg }} />
+            <div className="space-y-3">
+              <Pill tone="green">Share QR Ready</Pill>
+              <p className="text-sm leading-6 text-emerald-100">Student can share this QR with universities, employers, or other organizations. Verifiers scan or paste the payload in Credential Check.</p>
+              <textarea readOnly value={shareResult.qrContent} className="min-h-[120px] w-full rounded-2xl border border-white/10 bg-slate-950/60 p-4 text-xs text-white outline-none" />
+            </div>
+          </div>
+        ) : null}
       </GlassCard>
     </StandardPage>
   );
@@ -1527,6 +1598,8 @@ export default function SoraWebsite() {
   const [academicCertificateIssueResult, setAcademicCertificateIssueResult] = useState<IssueCredentialResult | null>(null);
   const [academicCertificateIssueStatus, setAcademicCertificateIssueStatus] = useState<VerificationStatusResponse | null>(null);
   const [issuanceHistory, setIssuanceHistory] = useState<IssuanceHistoryItem[]>([]);
+  const [shareResult, setShareResult] = useState<CredentialShareResponse | null>(null);
+  const [shareVerification, setShareVerification] = useState<ShareVerificationResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const visibleNavItems = signedInUser ? signedInNavItems : publicNavItems;
@@ -1769,6 +1842,59 @@ export default function SoraWebsite() {
     }
   }
 
+  async function revokeIssuedCredential(threadId: string) {
+    setBusy(`revoke-${threadId}`);
+    setError(null);
+    try {
+      await callApi<{ ok: boolean; status: string }>("/api/issuance/revoke", {
+        method: "POST",
+        body: JSON.stringify({ threadId }),
+      });
+      setShareResult(null);
+      await refreshIssuanceHistory();
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Unable to revoke credential.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function createCredentialShare(threadId: string) {
+    setBusy(`share-${threadId}`);
+    setError(null);
+    try {
+      const share = await callApi<CredentialShareResponse>("/api/share/create", {
+        method: "POST",
+        body: JSON.stringify({ threadId, holderDid }),
+      });
+      setShareResult(share);
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Unable to create share QR.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function verifyCredentialShare(payload: string) {
+    setBusy("share-verify");
+    setError(null);
+    try {
+      const result = await callApi<ShareVerificationResponse>("/api/share/verify", {
+        method: "POST",
+        body: JSON.stringify({ payload }),
+      });
+      setShareVerification(result);
+    } catch (requestError) {
+      setShareVerification({
+        verified: false,
+        status: "invalid",
+        error: requestError instanceof Error ? requestError.message : "Unable to verify shared credential.",
+      });
+    } finally {
+      setBusy(null);
+    }
+  }
+
   useEffect(() => {
     void loadIssueTemplate("studentId");
     void loadIssueTemplate("academicCertificate");
@@ -1852,15 +1978,15 @@ export default function SoraWebsite() {
   const page = useMemo(() => {
     if (!signedInUser && !["home", "signin"].includes(active)) return <SignInPage active={false} signedInUser={signedInUser} signInStart={signInStart} signInStatus={signInStatus} onStartSignIn={startSignIn} />;
     if (active === "signin") return <SignInPage active={true} signedInUser={signedInUser} signInStart={signInStart} signInStatus={signInStatus} onStartSignIn={startSignIn} />;
-    if (active === "issuer") return signedInUser ? <ConnectedIssuerPage holderDid={holderDid} studentIdDraft={studentIdDraft} setStudentIdDraft={setStudentIdDraft} academicCertificateDraft={academicCertificateDraft} setAcademicCertificateDraft={setAcademicCertificateDraft} academicCertificateCountry={academicCertificateCountry} setAcademicCertificateCountry={setAcademicCertificateCountry} academicCertificateInstitution={academicCertificateInstitution} setAcademicCertificateInstitution={setAcademicCertificateInstitution} academicCertificateGradeScale={academicCertificateGradeScale} setAcademicCertificateGradeScale={setAcademicCertificateGradeScale} academicCertificateGradeValue={academicCertificateGradeValue} setAcademicCertificateGradeValue={setAcademicCertificateGradeValue} studentIdIssueResult={studentIdIssueResult} studentIdIssueStatus={studentIdIssueStatus} academicCertificateIssueResult={academicCertificateIssueResult} academicCertificateIssueStatus={academicCertificateIssueStatus} issuanceHistory={issuanceHistory} busy={busy} onIssue={submitIssuance} /> : <SignInPage active={false} signedInUser={signedInUser} signInStart={signInStart} signInStatus={signInStatus} onStartSignIn={startSignIn} />;
+    if (active === "issuer") return signedInUser ? <ConnectedIssuerPage holderDid={holderDid} studentIdDraft={studentIdDraft} setStudentIdDraft={setStudentIdDraft} academicCertificateDraft={academicCertificateDraft} setAcademicCertificateDraft={setAcademicCertificateDraft} academicCertificateCountry={academicCertificateCountry} setAcademicCertificateCountry={setAcademicCertificateCountry} academicCertificateInstitution={academicCertificateInstitution} setAcademicCertificateInstitution={setAcademicCertificateInstitution} academicCertificateGradeScale={academicCertificateGradeScale} setAcademicCertificateGradeScale={setAcademicCertificateGradeScale} academicCertificateGradeValue={academicCertificateGradeValue} setAcademicCertificateGradeValue={setAcademicCertificateGradeValue} studentIdIssueResult={studentIdIssueResult} studentIdIssueStatus={studentIdIssueStatus} academicCertificateIssueResult={academicCertificateIssueResult} academicCertificateIssueStatus={academicCertificateIssueStatus} issuanceHistory={issuanceHistory} shareResult={shareResult} busy={busy} onIssue={submitIssuance} onRevoke={revokeIssuedCredential} onCreateShare={createCredentialShare} /> : <SignInPage active={false} signedInUser={signedInUser} signInStart={signInStart} signInStatus={signInStatus} onStartSignIn={startSignIn} />;
     if (active === "verifier") return signedInUser ? <ConnectedVerifierPage grades={grades} setGrades={setGrades} report={report} activeStart={activeStart} verificationStatus={verificationStatus} busy={busy} onGenerate={submitReport} onStartAcademicScan={() => startVerification("academicCertificate", "stay")} onUseVerifiedAcademic={applyVerifiedAcademicConversion} /> : <SignInPage active={false} signedInUser={signedInUser} signInStart={signInStart} signInStatus={signInStatus} onStartSignIn={startSignIn} />;
     if (active === "opportunities") return signedInUser ? <OpportunitiesPage signedInUser={signedInUser} setActive={setActive} verificationStatus={verificationStatus} report={report} /> : <SignInPage active={false} signedInUser={signedInUser} signInStart={signInStart} signInStatus={signInStatus} onStartSignIn={startSignIn} />;
     if (active === "credentials") return signedInUser ? <CredentialsPage verificationStatus={verificationStatus} issuanceHistory={issuanceHistory} /> : <SignInPage active={false} signedInUser={signedInUser} signInStart={signInStart} signInStatus={signInStatus} onStartSignIn={startSignIn} />;
-    if (active === "verify") return <ConnectedVerifyPage activeStart={activeStart} verificationStatus={verificationStatus} busy={busy} onStartVerification={startVerification} />;
+    if (active === "verify") return <ConnectedVerifyPage activeStart={activeStart} verificationStatus={verificationStatus} shareVerification={shareVerification} busy={busy} onStartVerification={startVerification} onVerifyShare={verifyCredentialShare} />;
     if (active === "ndi") return <ConnectedNDIPage activeStart={activeStart} verificationStatus={verificationStatus} />;
     if (active === "sdk") return signedInUser ? <SDKPage /> : <SignInPage active={false} signedInUser={signedInUser} signInStart={signInStart} signInStatus={signInStatus} onStartSignIn={startSignIn} />;
     return <HomePage setActive={setActive} />;
-  }, [academicCertificateCountry, academicCertificateDraft, academicCertificateGradeScale, academicCertificateGradeValue, academicCertificateInstitution, academicCertificateIssueResult, academicCertificateIssueStatus, active, activeStart, busy, grades, holderDid, issuanceHistory, report, signInStart, signInStatus, signedInUser, studentIdDraft, studentIdIssueResult, studentIdIssueStatus, verificationStatus]);
+  }, [academicCertificateCountry, academicCertificateDraft, academicCertificateGradeScale, academicCertificateGradeValue, academicCertificateInstitution, academicCertificateIssueResult, academicCertificateIssueStatus, active, activeStart, busy, grades, holderDid, issuanceHistory, report, shareResult, shareVerification, signInStart, signInStatus, signedInUser, studentIdDraft, studentIdIssueResult, studentIdIssueStatus, verificationStatus]);
 
   return (
     <PageWrap>
