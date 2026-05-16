@@ -41,6 +41,7 @@ export function createMockProofResult(
       holder_did: "did:key:z6Mkf6mockholder123456789",
       requested_presentation: {
         revealed_attrs: {
+          "Full Name": [{ value: "Sonam Choden" }],
           "Student ID": [{ value: "20240001" }],
           "Student Name": [{ value: "Sonam Choden" }],
           "College Name": [{ value: "Royal University of Bhutan" }],

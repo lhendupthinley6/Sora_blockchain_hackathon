@@ -10,9 +10,15 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "sora-sdk": "*",
+    "autoprefixer": "^10.5.0",
+    "framer-motion": "^12.38.0",
+    "lucide-react": "^1.16.0",
+    "postcss": "^8.5.14",
+    "qrcode.react": "^4.2.0",
     "react": "^19.2.0",
-    "react-dom": "^19.2.0"
+    "react-dom": "^19.2.0",
+    "sora-sdk": "*",
+    "tailwindcss": "^3.4.17"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^6.9.1",

@@ -1,11 +1,13 @@
 export type SoraMode = "mock" | "ndi";
 
 export type SupportedCredentialSchema = "studentId" | "academicCertificate";
+export type SignInRole = "user" | "issuer" | "verifier";
 
 export type VerificationScope =
   | SupportedCredentialSchema
   | "combined"
-  | "holderDiscovery";
+  | "holderDiscovery"
+  | "signIn";
 
 export type VerificationStatus =
   | "pending"
@@ -150,4 +152,25 @@ export interface IssueCredentialResult {
   qrSvg?: string;
   acceptanceStatus?: "issued" | "accepted";
   acceptancePayload?: unknown;
+}
+
+export interface SignInStartResult extends VerificationStartResult {
+  scope: "signIn";
+  role: SignInRole;
+}
+
+export interface SignInStatusResponse {
+  threadId: string;
+  role: SignInRole;
+  status: VerificationStatus;
+  transport: "mock" | "webhook" | "nats";
+  start?: SignInStartResult;
+  normalizedResult?: NormalizedProofResult;
+  profile?: {
+    fullName: string;
+    holderDid: string | null;
+    email?: string | null;
+    phone?: string | null;
+  };
+  error?: string;
 }

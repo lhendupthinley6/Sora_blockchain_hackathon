@@ -20,6 +20,8 @@ export function buildProofRequest(scope: VerificationScope): ProofRequestPayload
         ? "Verify Academic Certificate"
         : scope === "holderDiscovery"
           ? "Discover wallet holder"
+          : scope === "signIn"
+            ? "Sign in with Bhutan NDI"
           : "Verify Academic Credentials";
 
   const proofAttributes =
@@ -34,12 +36,19 @@ export function buildProofRequest(scope: VerificationScope): ProofRequestPayload
                 restrictions: [{ schema_name: FOUNDATIONAL_ID_SCHEMA.schemaUrl }],
               },
             ]
+          : scope === "signIn"
+            ? [
+                {
+                  name: "Full Name",
+                  restrictions: [{ schema_name: FOUNDATIONAL_ID_SCHEMA.schemaUrl }],
+                },
+              ]
           : [...buildAttributes("studentId"), ...buildAttributes("academicCertificate")];
 
   return {
     proofName,
     proofAttributes,
-    purpose: "ekyc",
+    purpose: scope === "signIn" ? "login" : "ekyc",
     authenticationLevel: "Standard",
     isShortenUrl: true,
   };

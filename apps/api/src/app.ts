@@ -13,7 +13,9 @@ import {
   RUB_SCHEMAS,
   type IssueCredentialRequest,
   type ManualGradeInput,
+  type SignInRole,
   type SoraMode,
+  type SignInStartResult,
   type SupportedCredentialSchema,
   type VerificationScope,
 } from "sora-sdk";
@@ -32,12 +34,20 @@ function assertScope(value: unknown): VerificationScope {
     value === "studentId" ||
     value === "academicCertificate" ||
     value === "combined" ||
-    value === "holderDiscovery"
+    value === "holderDiscovery" ||
+    value === "signIn"
   ) {
     return value;
   }
 
   throw new Error("Invalid verification scope.");
+}
+
+function assertRole(value: unknown): SignInRole {
+  if (value === "user" || value === "issuer" || value === "verifier") {
+    return value;
+  }
+  throw new Error("Invalid sign-in role.");
 }
 
 function assertManualGrades(value: unknown): ManualGradeInput {
@@ -120,6 +130,25 @@ function createIssueTemplate(schema: SupportedCredentialSchema) {
   };
 }
 
+function buildSignInProfile(
+  role: SignInRole,
+  normalizedResult?: ReturnType<typeof normalizeProofPayload>,
+) {
+  const fullName =
+    normalizedResult?.rawRevealedAttributes["Full Name"] ??
+    normalizedResult?.credentials.studentId?.studentName ??
+    normalizedResult?.credentials.academicCertificate?.studentName ??
+    "Verified holder";
+
+  return {
+    fullName,
+    holderDid: normalizedResult?.holder.holderDid ?? null,
+    email: null,
+    phone: null,
+    role,
+  };
+}
+
 function resolveMode(config: AppConfig, headerMode: unknown): SoraMode {
   if (headerMode === "mock" || headerMode === "ndi") {
     return headerMode;
@@ -193,6 +222,47 @@ function applyTransportEvent(
   return { ok: true as const, deduped: false };
 }
 
+function matchesRevokedCredential(
+  flow: ReturnType<FlowStore["get"]> extends infer T ? T : never,
+  normalized: ReturnType<typeof normalizeProofPayload>,
+) {
+  if (!flow || flow.flowType !== "issuance" || !flow.revoked || !flow.issuedCredentialData) {
+    return false;
+  }
+
+  const studentId = normalized.credentials.studentId?.studentId ?? normalized.credentials.academicCertificate?.studentId;
+  if (!studentId) {
+    return false;
+  }
+
+  const issuedStudentId = String(flow.issuedCredentialData["Student ID"] ?? "");
+  if (!issuedStudentId || issuedStudentId !== String(studentId)) {
+    return false;
+  }
+
+  if (normalized.scope === "combined") {
+    return flow.scope === "studentId" || flow.scope === "academicCertificate";
+  }
+
+  return flow.scope === normalized.scope;
+}
+
+function applyLocalRevocationStatus(store: FlowStore, normalized: ReturnType<typeof normalizeProofPayload>) {
+  const revokedFlow = store.list().find((flow) => matchesRevokedCredential(flow, normalized));
+  if (!revokedFlow) {
+    return { normalized, revoked: false as const };
+  }
+
+  return {
+    revoked: true as const,
+    normalized: {
+      ...normalized,
+      verified: false,
+      verificationResult: "RevokedByIssuer",
+    },
+  };
+}
+
 export function createApp(
   config: AppConfig,
   options?: {
@@ -216,6 +286,79 @@ export function createApp(
 
   app.get("/health", (_req, res) => {
     res.json({ ok: true, mode: config.mode, transport: config.ndiTransport });
+  });
+
+  app.post("/api/auth/sign-in/start", async (req, res) => {
+    try {
+      const role = assertRole(req.body?.role);
+      const scope: VerificationScope = "signIn";
+      const mode = resolveMode(config, req.headers["x-sora-mode"]);
+
+      if (mode === "mock") {
+        const start = {
+          ...createMockVerificationStart(scope),
+          scope: "signIn" as const,
+          role,
+        } satisfies SignInStartResult;
+        const normalized = createMockProofResult(start.threadId, scope);
+        store.set(start.threadId, {
+          flowType: "signIn",
+          scope,
+          role,
+          status: "completed",
+          transport: "mock",
+          start,
+          normalizedResult: normalized,
+        });
+        res.status(201).json(start);
+        return;
+      }
+
+      if (config.ndiTransport === "nats") {
+        await ndiNatsTransport.ensureConnected();
+      } else {
+        await ndiClient.ensureWebhookRegistered();
+      }
+      const response = await ndiClient.createProofRequest(buildProofRequest(scope));
+      if (config.ndiTransport === "webhook") {
+        await ndiClient.subscribeWebhook(response.proofRequestThreadId);
+      }
+      const start = {
+        ...(await withQrSvg(response, mode, scope, config.ndiTransport)),
+        scope: "signIn" as const,
+        role,
+      } satisfies SignInStartResult;
+      store.set(start.threadId, {
+        flowType: "signIn",
+        scope,
+        role,
+        status: "pending",
+        transport: config.ndiTransport,
+        start,
+      });
+      res.status(201).json(start);
+    } catch (error) {
+      res.status(400).json({ error: error instanceof Error ? error.message : "Unable to start sign-in." });
+    }
+  });
+
+  app.get("/api/auth/sign-in/:threadId", (req, res) => {
+    const flow = store.get(req.params.threadId);
+    if (!flow || flow.flowType !== "signIn") {
+      res.status(404).json({ error: "Sign-in flow not found." });
+      return;
+    }
+
+    res.json({
+      threadId: req.params.threadId,
+      role: flow.role,
+      status: flow.status,
+      transport: flow.transport,
+      start: flow.start,
+      normalizedResult: flow.normalizedResult,
+      profile: buildSignInProfile(flow.role ?? "user", flow.normalizedResult),
+      error: flow.error,
+    });
   });
 
   app.post("/api/verification/start", async (req, res) => {
@@ -461,6 +604,24 @@ export function createApp(
       schemaUrl: RUB_SCHEMAS[schema].schemaUrl,
       credentialData: createIssueTemplate(schema),
     });
+  });
+
+  app.get("/api/issuance/history", (_req, res) => {
+    const history = store
+      .list()
+      .filter((flow) => flow.flowType === "issuance" && flow.issueResult)
+      .map((flow) => ({
+        threadId: flow.issueResult!.issueCredThreadId,
+        scope: flow.scope,
+        status: flow.status,
+        transport: flow.transport,
+        deepLinkURL: flow.issueResult!.deepLinkURL,
+        credInviteURL: flow.issueResult!.credInviteURL,
+        relationshipDid: flow.issueResult!.relationshipDid ?? null,
+        revocationId: flow.issueResult!.revocationId ?? null,
+        acceptanceStatus: flow.issueResult!.acceptanceStatus ?? flow.status,
+      }));
+    res.json({ items: history });
   });
 
   return { app, store };

@@ -4,6 +4,26 @@ import { createApp } from "../src/app";
 import { loadConfig } from "../src/config";
 
 describe("API integration", () => {
+  it("starts and resolves a mock sign-in flow", async () => {
+    const { app } = createApp(loadConfig({ SORA_MODE: "mock" }));
+
+    const startResponse = await request(app)
+      .post("/api/auth/sign-in/start")
+      .send({ role: "verifier" })
+      .expect(201);
+
+    expect(startResponse.body.scope).toBe("signIn");
+    expect(startResponse.body.role).toBe("verifier");
+
+    const statusResponse = await request(app)
+      .get(`/api/auth/sign-in/${startResponse.body.threadId}`)
+      .expect(200);
+
+    expect(statusResponse.body.status).toBe("completed");
+    expect(statusResponse.body.profile.fullName).toBe("Sonam Choden");
+    expect(statusResponse.body.role).toBe("verifier");
+  });
+
   it("runs the mock verification and screening flow", async () => {
     const { app } = createApp(loadConfig({ SORA_MODE: "mock" }));
 
@@ -263,5 +283,30 @@ describe("API integration", () => {
     const statusResponse = await request(app).get(`/api/verification/${issueThreadId}`).expect(200);
     expect(statusResponse.body.status).toBe("accepted");
     expect(statusResponse.body.issueResult.acceptanceStatus).toBe("accepted");
+  });
+
+  it("returns issuance history for issued credentials", async () => {
+    const { app } = createApp(loadConfig({ SORA_MODE: "mock" }));
+
+    const issueResponse = await request(app)
+      .post("/api/issuance/issue")
+      .send({
+        schema: "studentId",
+        holderDID: "did:key:test-holder",
+        credentialData: {
+          "Student ID": "20240001",
+          "Student Name": "Pema",
+          "College Name": "RUB",
+          "Programme Name": "BSc",
+          "Enrollment Year": "2021",
+          "Programme Duration": "4 years",
+        },
+      })
+      .expect(201);
+
+    const historyResponse = await request(app).get("/api/issuance/history").expect(200);
+    expect(historyResponse.body.items).toHaveLength(1);
+    expect(historyResponse.body.items[0].threadId).toBe(issueResponse.body.issueCredThreadId);
+    expect(historyResponse.body.items[0].acceptanceStatus).toBe("accepted");
   });
 });

@@ -2,13 +2,14 @@ import type {
   IssueCredentialResult,
   NormalizedProofResult,
   ScreeningReport,
+  SignInRole,
   VerificationScope,
   VerificationStartResult,
   VerificationStatus,
 } from "sora-sdk";
 
 export interface VerificationFlowRecord {
-  flowType: "proof" | "issuance";
+  flowType: "proof" | "issuance" | "signIn";
   scope: VerificationScope;
   status: VerificationStatus;
   transport: "mock" | "webhook" | "nats";
@@ -16,6 +17,10 @@ export interface VerificationFlowRecord {
   normalizedResult?: NormalizedProofResult;
   report?: ScreeningReport;
   issueResult?: IssueCredentialResult;
+  issuedCredentialData?: Record<string, string | number>;
+  revoked?: boolean;
+  revokedAt?: string;
+  role?: SignInRole;
   lastEventId?: string;
   lastTransportPayload?: unknown;
   error?: string;
@@ -34,5 +39,9 @@ export class FlowStore {
 
   has(threadId: string): boolean {
     return this.flows.has(threadId);
+  }
+
+  list(): VerificationFlowRecord[] {
+    return [...this.flows.values()];
   }
 }

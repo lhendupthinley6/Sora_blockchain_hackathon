@@ -60,7 +60,8 @@ BPKIHS,Nepal,0.88,0.87,0.38,0.88,88
 Chulalongkorn University,Thailand,0.95,0.96,0.25,0.95,96
 Mahidol University,Thailand,0.94,0.95,0.26,0.94,95
 KMUTT,Thailand,0.9,0.91,0.32,0.9,91
-Assumption University,Thailand,0.82,0.8,0.45,0.82,80`;
+Assumption University,Thailand,0.82,0.8,0.45,0.82,80
+Royal University of Bhutan,Bhutan,0.89,0.9,0.34,0.92,90`;
 
 export function normalizeInstitutionKey(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();

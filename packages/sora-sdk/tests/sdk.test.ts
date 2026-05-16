@@ -40,6 +40,13 @@ describe("proof request builder", () => {
       },
     ]);
   });
+
+  it("builds sign-in proof requests using login purpose", () => {
+    const proof = buildProofRequest("signIn");
+    expect(proof.proofName).toBe("Sign in with Bhutan NDI");
+    expect(proof.purpose).toBe("login");
+    expect(proof.proofAttributes[0]?.name).toBe("Full Name");
+  });
 });
 
 describe("proof normalization", () => {
