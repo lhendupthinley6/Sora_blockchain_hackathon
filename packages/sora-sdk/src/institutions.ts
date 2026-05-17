@@ -1,4 +1,4 @@
-import type { InstitutionContextRecord } from "./types";
+import type { InstitutionContextRecord } from "./types.js";
 
 const DATASET_CSV = `University,Country,GDI,SI,GDS,ARF,TrueScore
 University of Oxford,UK,0.98,0.99,0.2,1.0,100

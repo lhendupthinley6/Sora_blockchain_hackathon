@@ -1,9 +1,9 @@
-import { FOUNDATIONAL_ID_SCHEMA, RUB_SCHEMAS } from "./schemas";
+import { FOUNDATIONAL_ID_SCHEMA, RUB_SCHEMAS } from "./schemas.js";
 import type {
   ProofRequestPayload,
   SupportedCredentialSchema,
   VerificationScope,
-} from "./types";
+} from "./types.js";
 
 function buildAttributes(schema: SupportedCredentialSchema) {
   return RUB_SCHEMAS[schema].attributes.map((name) => ({

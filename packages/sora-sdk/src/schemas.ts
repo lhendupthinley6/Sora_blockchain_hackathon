@@ -1,4 +1,4 @@
-import type { SupportedCredentialSchema } from "./types";
+import type { SupportedCredentialSchema } from "./types.js";
 
 export const RUB_SCHEMAS: Record<
   SupportedCredentialSchema,

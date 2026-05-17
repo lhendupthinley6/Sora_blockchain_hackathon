@@ -43,7 +43,7 @@ import {
 } from "lucide-react";
 import { QRCodeCanvas } from "qrcode.react";
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3030";
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? (import.meta.env.PROD ? "" : "http://localhost:3030");
 const DEFAULT_SORA_MODE: SoraMode = import.meta.env.VITE_SORA_MODE === "mock" ? "mock" : "ndi";
 
 interface VerificationStatusResponse {
@@ -719,6 +719,12 @@ function SignInPage({
           </div>
           {signedInUser ? (
             <div className="mt-6 rounded-2xl border border-emerald-300/20 bg-emerald-300/10 px-5 py-3 text-sm font-bold text-emerald-50">Signed in successfully. Use the navigation bar to open tools.</div>
+          ) : null}
+          {!signedInUser && signInStatus?.error ? (
+            <div className="mt-6 rounded-2xl border border-amber-300/20 bg-amber-300/10 px-5 py-4 text-sm text-amber-50">
+              <p className="font-bold">This QR session may have expired on the deployed server.</p>
+              <button onClick={() => void onStartSignIn()} className="mt-3 rounded-2xl bg-amber-300 px-4 py-2 text-xs font-black text-slate-950 transition hover:bg-amber-200">Generate New NDI QR</button>
+            </div>
           ) : null}
           {signedInUser ? (
             <div className="mt-6 rounded-3xl border border-emerald-300/20 bg-emerald-300/10 p-5">
@@ -1563,10 +1569,25 @@ export default function SoraWebsite() {
     setBusy("signIn");
     setError(null);
     try {
-      const start = await callApi<SignInStartResult>("/api/auth/sign-in/start", {
-        method: "POST",
-        body: JSON.stringify({ role: "user" }),
-      });
+      let start: SignInStartResult | null = null;
+      let lastError: unknown = null;
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        try {
+          start = await callApi<SignInStartResult>("/api/auth/sign-in/start", {
+            method: "POST",
+            body: JSON.stringify({ role: "user" }),
+          });
+          break;
+        } catch (requestError) {
+          lastError = requestError;
+          if (attempt === 0) {
+            await new Promise((resolve) => window.setTimeout(resolve, 900));
+          }
+        }
+      }
+      if (!start) {
+        throw lastError instanceof Error ? lastError : new Error("Unable to start sign-in.");
+      }
       setSignInStart(start);
       setSignInStatus(null);
       setActive("signin");

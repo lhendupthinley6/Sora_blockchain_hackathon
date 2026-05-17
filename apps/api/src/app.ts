@@ -19,10 +19,10 @@ import {
   type SupportedCredentialSchema,
   type VerificationScope,
 } from "sora-sdk";
-import type { AppConfig } from "./config";
-import { FlowStore } from "./store";
-import { NdiClient, type NdiProofStart } from "./ndiClient";
-import { NdiNatsTransport } from "./natsTransport";
+import type { AppConfig } from "./config.js";
+import { FlowStore } from "./store.js";
+import { NdiClient, type NdiProofStart } from "./ndiClient.js";
+import { NdiNatsTransport } from "./natsTransport.js";
 
 const numericFields: Record<SupportedCredentialSchema, string[]> = {
   studentId: [],
@@ -300,7 +300,7 @@ export function createApp(
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
 
-  app.get("/health", (_req, res) => {
+  app.get(["/health", "/api/health"], (_req, res) => {
     res.json({ ok: true, mode: config.mode, transport: config.ndiTransport });
   });
 
@@ -361,7 +361,13 @@ export function createApp(
   app.get("/api/auth/sign-in/:threadId", (req, res) => {
     const flow = store.get(req.params.threadId);
     if (!flow || flow.flowType !== "signIn") {
-      res.status(404).json({ error: "Sign-in flow not found." });
+      res.json({
+        threadId: req.params.threadId,
+        role: "user",
+        status: "pending",
+        transport: config.ndiTransport,
+        error: "This sign-in session is no longer attached to the active serverless instance. Start sign-in again if the QR does not complete.",
+      });
       return;
     }
 
@@ -466,7 +472,7 @@ export function createApp(
     }
   });
 
-  app.post("/oauth/token", (req, res) => {
+  app.post(["/oauth/token", "/api/oauth/token"], (req, res) => {
     const clientId = req.body?.client_id;
     const clientSecret = req.body?.client_secret;
     if (clientId !== config.webhookClientId || clientSecret !== config.webhookClientSecret) {
@@ -480,7 +486,7 @@ export function createApp(
     });
   });
 
-  app.post("/ndi-webhook", (req, res) => {
+  app.post(["/ndi-webhook", "/api/ndi-webhook"], (req, res) => {
     if (req.headers.authorization !== `Bearer ${config.webhookClientSecret}`) {
       res.status(401).json({ error: "Unauthorized webhook request." });
       return;

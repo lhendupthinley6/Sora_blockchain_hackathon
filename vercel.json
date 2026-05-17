@@ -1,0 +1,23 @@
+{
+  "installCommand": "npm install",
+  "buildCommand": "npm run build -w sora-sdk && npm run build -w @sora/api && npm run build -w @sora/web",
+  "outputDirectory": "apps/web/dist",
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "/api"
+    },
+    {
+      "source": "/health",
+      "destination": "/api"
+    },
+    {
+      "source": "/oauth/token",
+      "destination": "/api"
+    },
+    {
+      "source": "/ndi-webhook",
+      "destination": "/api"
+    }
+  ]
+}

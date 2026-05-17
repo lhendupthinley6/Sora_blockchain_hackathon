@@ -1,5 +1,5 @@
 import { createRequire } from "node:module";
-import type { AppConfig } from "./config";
+import type { AppConfig } from "./config.js";
 
 const require = createRequire(import.meta.url);
 const { connect, JSONCodec, nkeyAuthenticator } = require("nats") as {

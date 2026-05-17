@@ -1,4 +1,4 @@
-import type { AppConfig } from "./config";
+import type { AppConfig } from "./config.js";
 import type {
   IssueCredentialRequest,
   IssueCredentialResult,

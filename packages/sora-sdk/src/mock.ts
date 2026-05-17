@@ -1,12 +1,12 @@
-import { buildProofRequest } from "./proof";
-import { normalizeProofPayload } from "./normalize";
+import { buildProofRequest } from "./proof.js";
+import { normalizeProofPayload } from "./normalize.js";
 import type {
   IssueCredentialRequest,
   IssueCredentialResult,
   NormalizedProofResult,
   VerificationScope,
   VerificationStartResult,
-} from "./types";
+} from "./types.js";
 
 function createThreadId(prefix: string): string {
   return `${prefix}-${Math.random().toString(36).slice(2, 10)}`;

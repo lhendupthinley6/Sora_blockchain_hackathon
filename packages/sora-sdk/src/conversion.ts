@@ -1,12 +1,12 @@
 import {
   findInstitutionRecord,
   INSTITUTION_BASELINE,
-} from "./institutions";
+} from "./institutions.js";
 import type {
   ContextualConversionResult,
   ManualGradeInput,
   InstitutionContextRecord,
-} from "./types";
+} from "./types.js";
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));

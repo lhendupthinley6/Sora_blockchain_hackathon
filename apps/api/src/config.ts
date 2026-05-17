@@ -21,6 +21,14 @@ function trimTrailingSlash(value: string): string {
   return value.endsWith("/") ? value.replace(/\/+$/, "") : value;
 }
 
+function defaultPublicBaseUrl(env: NodeJS.ProcessEnv): string {
+  if (env.VERCEL_URL) {
+    return `https://${env.VERCEL_URL}`;
+  }
+
+  return "http://localhost:3030";
+}
+
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   return {
     mode: (env.SORA_MODE as SoraMode | undefined) ?? "mock",
@@ -28,7 +36,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     ndiClientId: env.NDI_CLIENT_ID,
     ndiClientSecret: env.NDI_CLIENT_SECRET,
     ndiTransport: env.NDI_TRANSPORT === "nats" ? "nats" : "webhook",
-    publicBaseUrl: trimTrailingSlash(env.PUBLIC_BASE_URL ?? "http://localhost:3030"),
+    publicBaseUrl: trimTrailingSlash(env.PUBLIC_BASE_URL ?? defaultPublicBaseUrl(env)),
     webhookId: env.NDI_WEBHOOK_ID ?? "sora-academic-demo",
     webhookClientId: env.WEBHOOK_CLIENT_ID ?? "sora-demo-webhook",
     webhookClientSecret: env.WEBHOOK_CLIENT_SECRET ?? "sora-demo-webhook-secret",

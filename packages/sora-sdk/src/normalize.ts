@@ -1,10 +1,10 @@
-import { RUB_SCHEMAS } from "./schemas";
+import { RUB_SCHEMAS } from "./schemas.js";
 import type {
   AcademicCertificateCredential,
   NormalizedProofResult,
   StudentIdCredential,
   VerificationScope,
-} from "./types";
+} from "./types.js";
 
 interface NdiInnerPayload {
   type?: string;

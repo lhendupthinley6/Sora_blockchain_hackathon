@@ -1,10 +1,10 @@
-import { runContextualConversion } from "./conversion";
+import { runContextualConversion } from "./conversion.js";
 import type {
   ManualGradeInput,
   NormalizedProofResult,
   ScreeningReport,
   SoraMode,
-} from "./types";
+} from "./types.js";
 
 export function buildStandaloneScreeningReport(
   mode: SoraMode,
